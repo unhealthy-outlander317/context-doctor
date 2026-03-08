@@ -17,8 +17,11 @@ MIT License — https://github.com/jzOcb/context-doctor
 import argparse
 import json
 import os
+import select
+import signal
 import subprocess
 import sys
+import time
 
 # ── ANSI colors ──────────────────────────────────────────────────────────────
 
@@ -46,7 +49,9 @@ def c(color_code: str, text: str) -> str:
     """Apply color if colors are enabled."""
     if NO_COLOR:
         return str(text)
-    return f"{color_code}{text}{RESET}"
+    # Re-apply outer color after any nested reset sequences in text.
+    rendered = str(text).replace(RESET, f"{RESET}{color_code}")
+    return f"{color_code}{rendered}{RESET}"
 
 
 # ── Config ───────────────────────────────────────────────────────────────────
@@ -350,27 +355,74 @@ def render_png(workspace: str, ctx_size: int, output_path: str) -> None:
     if workspace:
         env["OPENCLAW_WORKSPACE"] = workspace
 
-    pid, fd = pty_mod.fork()
-    if pid == 0:
-        # Child — run ourselves in terminal mode (no --png to avoid recursion)
-        os.environ.update(env)
-        cmd = ["python3", script_path]
-        if workspace:
-            cmd += ["--workspace", workspace]
-        cmd += ["--ctx-size", str(ctx_size)]
-        os.execvp("python3", cmd)
-    else:
-        raw = b""
+    output_path = os.path.abspath(os.path.expanduser(output_path))
+    if output_path.endswith(os.sep) or os.path.isdir(output_path):
+        print(f"Error: output path must be a file, got directory: {output_path}", file=sys.stderr)
+        sys.exit(1)
+    base, _ext = os.path.splitext(output_path)
+    if not base:
+        print(f"Error: invalid output path: {output_path}", file=sys.stderr)
+        sys.exit(1)
+
+    out_dir = os.path.dirname(output_path) or os.getcwd()
+    os.makedirs(out_dir, exist_ok=True)
+    svg_path = base + ".svg"
+
+    raw = b""
+    pid = -1
+    fd = -1
+    capture_timeout_sec = 30
+    start = time.monotonic()
+    try:
+        pid, fd = pty_mod.fork()
+        if pid == 0:
+            # Child — run ourselves in terminal mode (no --png to avoid recursion)
+            os.environ.update(env)
+            cmd = [sys.executable, script_path]
+            if workspace:
+                cmd += ["--workspace", workspace]
+            cmd += ["--ctx-size", str(ctx_size)]
+            os.execvp(sys.executable, cmd)
+            os._exit(127)
+
         while True:
+            if time.monotonic() - start > capture_timeout_sec:
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except OSError:
+                    pass
+                print("Error: timed out while capturing terminal output for PNG rendering", file=sys.stderr)
+                sys.exit(1)
+
+            readable, _, _ = select.select([fd], [], [], 0.5)
+            if not readable:
+                try:
+                    waited_pid, _ = os.waitpid(pid, os.WNOHANG)
+                    if waited_pid == pid:
+                        break
+                except ChildProcessError:
+                    break
+                continue
+
             try:
                 data = os.read(fd, 4096)
                 if not data:
                     break
                 raw += data
             except OSError:
+                # PTY EOF commonly surfaces as OSError(EIO).
                 break
-        os.waitpid(pid, 0)
-        os.close(fd)
+    finally:
+        if fd >= 0:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+        if pid > 0:
+            try:
+                os.waitpid(pid, 0)
+            except (ChildProcessError, OSError):
+                pass
 
     text = raw.decode("utf-8", errors="replace").replace("\r\n", "\n").replace("\r", "")
 
@@ -380,10 +432,6 @@ def render_png(workspace: str, ctx_size: int, output_path: str) -> None:
     svg = console.export_svg(title="context-doctor")
 
     # Write SVG
-    out_dir = os.path.dirname(os.path.abspath(output_path))
-    if out_dir:
-        os.makedirs(out_dir, exist_ok=True)
-    svg_path = output_path.rsplit(".", 1)[0] + ".svg"
     with open(svg_path, "w") as f:
         f.write(svg)
 
@@ -419,7 +467,7 @@ def render_png(workspace: str, ctx_size: int, output_path: str) -> None:
     else:
         # Fall back to SVG
         if svg_path != output_path:
-            os.rename(svg_path, output_path.rsplit(".", 1)[0] + ".svg")
+            os.rename(svg_path, base + ".svg")
         print(
             f"Warning: could not convert to PNG (install rsvg-convert or cairosvg). SVG saved.",
             file=sys.stderr,
@@ -494,6 +542,10 @@ def main():
         help="Render as PNG image to PATH (for sharing in chat)",
     )
     args = parser.parse_args()
+
+    if args.ctx_size <= 0:
+        print("Error: --ctx-size must be > 0", file=sys.stderr)
+        sys.exit(1)
 
     NO_COLOR = args.no_color or not sys.stdout.isatty()
 
